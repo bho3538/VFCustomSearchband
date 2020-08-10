@@ -8,6 +8,7 @@ typedef struct _XCUSTOMSEARCHBAND {
 	FLOAT dpi;
 	HWND hTargetHwnd;
 	HWND hSearchBox;
+	HWND hOriginalBox;
 	HINSTANCE hSearchboxM;
 	LPWSTR pPlaceHolderText; //not use yet
 	WNDPROC g_OldProc;
@@ -15,7 +16,6 @@ typedef struct _XCUSTOMSEARCHBAND {
 	CCUSTOMSEARCHCALLBACK callback;
 	PVOID userData;
 } XCUSTOMSEARCHBAND, *PXCUSTOMSEARCHBAND;
-
 
 
 __declspec(dllexport) PVOID VFInitializeCustomSearchBand(HWND targetHwnd, CCUSTOMSEARCHCALLBACK callback, PVOID userData, BOOL findSearchBand) {
@@ -57,6 +57,7 @@ __declspec(dllexport) BOOL VFShowCustomSearchBand(PVOID searchboxInfo) {
 	PXCUSTOMSEARCHBAND searchInfo = NULL;
 	RECT rect;
 	BOOL re = FALSE;
+	LONG_PTR tmp = 0;
 
 	if (!searchboxInfo) {
 		goto escapeArea;
@@ -89,9 +90,23 @@ __declspec(dllexport) BOOL VFShowCustomSearchBand(PVOID searchboxInfo) {
 	SetWindowPos(searchInfo->hSearchBox, HWND_TOP, 0, 0, rect.right, rect.bottom, 0);
 
 
+	SendMessage(searchInfo->hSearchBox, EM_GETRECT, 0, (LPARAM)&rect);
+
+	if (rect.bottom - rect.top > 30) {
+		rect.top += 5;
+		SendMessage(searchInfo->hSearchBox, EM_SETRECT, 1, (LPARAM)&rect);
+	}
+
+
 	ShowWindow(searchInfo->hSearchBox, SW_SHOWNORMAL);
 
 	searchInfo->hWatchSizeThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)CheckParentWindowSize, searchInfo, 0, NULL);
+
+	if (XCusumSearchbandEnabled(searchInfo->hTargetHwnd)) {
+		tmp = GetWindowLongPtrW(searchInfo->hOriginalBox, GWL_STYLE);
+		tmp &= ~(WS_VISIBLE);
+		SetWindowLongPtr(searchInfo->hOriginalBox, GWL_STYLE, tmp);
+	}
 
 	re = TRUE;
 escapeArea:
@@ -99,8 +114,34 @@ escapeArea:
 	return re;
 }
 
+__declspec(dllexport) void VFSetOptionsSearchband(PVOID searchboxInfo, DWORD option, PVOID exAttr) {
+	PXCUSTOMSEARCHBAND searchInfo = NULL;
+
+	if (!searchboxInfo) {
+		goto escapeArea;
+	}
+
+	searchInfo = searchboxInfo;
+	if (searchInfo->dwSize != sizeof(XCUSTOMSEARCHBAND)) {
+		goto escapeArea;
+	}
+
+	switch (option) {
+		case VF_SEARCH_ENABLE: {
+			SendMessageW(searchInfo->hSearchBox, EM_SETREADONLY, FALSE, 0);
+		}; break;
+		case VF_SEARCH_DISABLE: {
+			SendMessageW(searchInfo->hSearchBox, EM_SETREADONLY, TRUE, 0);
+		}; break;
+	}
+
+escapeArea:
+	return;
+}
+
 __declspec(dllexport) void VFCloseSearchBand(PVOID searchboxInfo) {
 	PXCUSTOMSEARCHBAND searchInfo = NULL;
+	LONG_PTR tmp = 0;
 
 	if (!searchboxInfo) {
 		goto escapeArea;
@@ -117,6 +158,14 @@ __declspec(dllexport) void VFCloseSearchBand(PVOID searchboxInfo) {
 	}
 
 	DestroyWindow(searchInfo->hSearchBox);
+
+	if (!XCusumSearchbandEnabled(searchInfo->hTargetHwnd)) {
+		tmp = GetWindowLongPtrW(searchInfo->hOriginalBox, GWL_STYLE);
+		tmp |= (WS_VISIBLE);
+		if (!SetWindowLongPtr(searchInfo->hOriginalBox, GWL_STYLE, tmp)) {
+			SendMessage(NULL, 0, 0, 0);
+		}
+	}
 
 escapeArea:
 	return;
@@ -147,6 +196,8 @@ escapeArea:
 BOOL XFindSearchband(HWND hwnd, LPARAM lParam) {
 	WCHAR className[MAX_PATH];
 	PXCUSTOMSEARCHBAND searchInfo = (PXCUSTOMSEARCHBAND)lParam;
+	DWORD tmp = 0;
+	HWND tmpHwnd;
 
 	if (!searchInfo) {
 		return FALSE;
@@ -157,31 +208,47 @@ BOOL XFindSearchband(HWND hwnd, LPARAM lParam) {
 	//Searchbox class name (Windows Vista +)
 	if (!wcscmp(className, L"UniversalSearchBand")) {
 		searchInfo->hTargetHwnd = hwnd;
+		searchInfo->hOriginalBox = NULL;
+		tmpHwnd = GetWindow(hwnd, GW_CHILD);
+		for (tmp = 0; tmp < 3; tmp++) {
+			GetClassNameW(tmpHwnd, className, MAX_PATH);
+			if (wcscmp(className, L"RICHEDIT50W")) {
+				searchInfo->hOriginalBox = tmpHwnd;
+				break;
+			}
+			tmpHwnd = GetWindow(tmpHwnd, GW_HWNDNEXT);
+		}
+		
+		GetClassNameW(searchInfo->hOriginalBox, className, MAX_PATH);
 		return FALSE;
 	}
+
 	return TRUE;
 }
 
 LRESULT CALLBACK SearchbarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	WCHAR text[MAX_PATH];
 	PXCUSTOMSEARCHBAND info = (PXCUSTOMSEARCHBAND)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+	LONG_PTR tmp = 0;
 
 	if (!info) {
 		return E_FAIL;
 	}
 
 	if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
-		//Get Current search text
-		GetWindowText(info->hSearchBox, text, MAX_PATH);
-		if (info->callback) {
-			info->callback(text,info->userData);
+		tmp = GetWindowLongPtrW(info->hSearchBox, GWL_STYLE);
+		if (!(tmp & ES_READONLY)) {
+			//Get Current search text
+			GetWindowText(info->hSearchBox, text, MAX_PATH);
+			if (info->callback) {
+				info->callback(text, info->userData);
+			}
+			else {
+				MessageBoxW(NULL, text, L"Custom NSE Search", 0);
+			}
+			//Clear current search text
+			SendMessageW(info->hSearchBox, WM_SETTEXT, (WPARAM)NULL, (LPARAM)L"");
 		}
-		else {
-			MessageBoxW(NULL, text, L"Custom NSE Search", 0);
-		}
-		//Clear current search text
-		SendMessageW(info->hSearchBox, WM_SETTEXT, (WPARAM)NULL, (LPARAM)L"");
-		
 	}
 	else if (msg == WM_GETDLGCODE && wParam == VK_RETURN) {
 		//allow enter key in file dialog
@@ -217,4 +284,22 @@ DWORD CheckParentWindowSize(LPVOID args) {
 		Sleep(1000);
 	}
 
+}
+//Check Custom Searchband is showed
+BOOL XCusumSearchbandEnabled(HWND hwnd) {
+	BOOL re = FALSE;
+
+	EnumChildWindows(hwnd, (WNDENUMPROC)XFindCustomSearchBand, (LPARAM)&re);
+
+	return re;
+}
+BOOL XFindCustomSearchBand(HWND hwnd, LPARAM lParam) {
+	WCHAR text[MAX_PATH];
+	GetClassNameW(hwnd, text, MAX_PATH);
+
+	if (!wcscmp(text, L"RICHEDIT50W")) {
+		*((PBOOL)lParam) = TRUE;
+		return FALSE;
+	}
+	return TRUE;
 }
