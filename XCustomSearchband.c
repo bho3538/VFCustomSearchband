@@ -29,13 +29,15 @@ __declspec(dllexport) PVOID VFInitializeCustomSearchBand(HWND targetHwnd, CCUSTO
 
 	searchInfo->dwSize = sizeof(XCUSTOMSEARCHBAND);
 	searchInfo->dwFlags = 0;
-	searchInfo->hTargetHwnd = targetHwnd;
 	searchInfo->hSearchboxM = LoadLibraryW(L"Msftedit.dll");
 	searchInfo->callback = callback;
 	searchInfo->userData = userData;
 
 	if (findSearchBand) {
 		EnumChildWindows(targetHwnd, (WNDENUMPROC)XFindSearchband, (LPARAM)searchInfo);
+	}
+	else {
+		searchInfo->hTargetHwnd = targetHwnd;
 	}
 
 	if (!searchInfo->hTargetHwnd) {
@@ -129,9 +131,11 @@ __declspec(dllexport) void VFSetOptionsSearchband(PVOID searchboxInfo, DWORD opt
 	switch (option) {
 		case VF_SEARCH_ENABLE: {
 			SendMessageW(searchInfo->hSearchBox, EM_SETREADONLY, FALSE, 0);
+			SendMessageW(searchInfo->hSearchBox, EM_SETBKGNDCOLOR, 0, RGB(255, 255, 255));
 		}; break;
 		case VF_SEARCH_DISABLE: {
 			SendMessageW(searchInfo->hSearchBox, EM_SETREADONLY, TRUE, 0);
+			SendMessageW(searchInfo->hSearchBox, EM_SETBKGNDCOLOR, 0, RGB(212, 212, 212));
 		}; break;
 	}
 
@@ -219,7 +223,7 @@ BOOL XFindSearchband(HWND hwnd, LPARAM lParam) {
 			tmpHwnd = GetWindow(tmpHwnd, GW_HWNDNEXT);
 		}
 		
-		GetClassNameW(searchInfo->hOriginalBox, className, MAX_PATH);
+		//GetClassNameW(searchInfo->hOriginalBox, className, MAX_PATH);
 		return FALSE;
 	}
 
@@ -253,6 +257,12 @@ LRESULT CALLBACK SearchbarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 	else if (msg == WM_GETDLGCODE && wParam == VK_RETURN) {
 		//allow enter key in file dialog
 		return (DLGC_WANTALLKEYS  | CallWindowProcW(info->g_OldProc, hwnd, msg, wParam, lParam));
+	}
+	else if (msg == WM_SETFOCUS) {
+		tmp = GetWindowLongPtrW(info->hSearchBox, GWL_STYLE);
+		if (tmp & ES_READONLY) {
+			return 0;
+		}
 	}
 	return CallWindowProcW(info->g_OldProc,hwnd, msg, wParam, lParam);
 }
