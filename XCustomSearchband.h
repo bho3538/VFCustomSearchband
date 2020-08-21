@@ -8,6 +8,7 @@ extern "C" {
 #define VF_SEARCH_OPTION
 #define VF_SEARCH_ENABLE 1
 #define VF_SEARCH_DISABLE 2
+#define VF_SEARCH_PLACEHOLDERTEXT 4
 #endif
 	typedef void(__stdcall *CCUSTOMSEARCHCALLBACK)(LPCWSTR, PVOID);
 

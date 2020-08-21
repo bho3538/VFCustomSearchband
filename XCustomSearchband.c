@@ -5,18 +5,21 @@
 typedef struct _XCUSTOMSEARCHBAND {
 	DWORD dwSize;
 	DWORD dwFlags;
+	DWORD dwReserved; //reserved
 	FLOAT dpi;
 	HWND hTargetHwnd;
 	HWND hSearchBox;
 	HWND hOriginalBox;
 	HINSTANCE hSearchboxM;
-	LPWSTR pPlaceHolderText; //not use yet
+	LPWSTR pPlaceHolderTextW;
 	WNDPROC g_OldProc;
 	HANDLE hWatchSizeThread;
 	CCUSTOMSEARCHCALLBACK callback;
 	PVOID userData;
 } XCUSTOMSEARCHBAND, *PXCUSTOMSEARCHBAND;
 
+void VFSetPlaceholderTextW(HWND hwnd, LPCWSTR text);
+void VFUnsetPlaceholderTextW(HWND hwnd);
 
 __declspec(dllexport) PVOID VFInitializeCustomSearchBand(HWND targetHwnd, CCUSTOMSEARCHCALLBACK callback, PVOID userData, BOOL findSearchBand) {
 	BOOL re = FALSE;
@@ -96,8 +99,9 @@ __declspec(dllexport) BOOL VFShowCustomSearchBand(PVOID searchboxInfo) {
 
 	if (rect.bottom - rect.top > 30) {
 		rect.top += 5;
-		SendMessage(searchInfo->hSearchBox, EM_SETRECT, 1, (LPARAM)&rect);
 	}
+	rect.left += 5;
+	SendMessage(searchInfo->hSearchBox, EM_SETRECT, 2, (LPARAM)&rect);
 
 
 	ShowWindow(searchInfo->hSearchBox, SW_SHOWNORMAL);
@@ -118,6 +122,7 @@ escapeArea:
 
 __declspec(dllexport) void VFSetOptionsSearchband(PVOID searchboxInfo, DWORD option, PVOID exAttr) {
 	PXCUSTOMSEARCHBAND searchInfo = NULL;
+	DWORD dwValue = 0;
 
 	if (!searchboxInfo) {
 		goto escapeArea;
@@ -136,6 +141,26 @@ __declspec(dllexport) void VFSetOptionsSearchband(PVOID searchboxInfo, DWORD opt
 		case VF_SEARCH_DISABLE: {
 			SendMessageW(searchInfo->hSearchBox, EM_SETREADONLY, TRUE, 0);
 			SendMessageW(searchInfo->hSearchBox, EM_SETBKGNDCOLOR, 0, RGB(212, 212, 212));
+		}; break;
+		case VF_SEARCH_PLACEHOLDERTEXT: {
+			if (exAttr) { //LPCWSTR
+				if (searchInfo->pPlaceHolderTextW) {
+					free(searchInfo->pPlaceHolderTextW);
+				}
+
+				dwValue = (DWORD)wcslen(exAttr);
+				searchInfo->pPlaceHolderTextW = (LPWSTR)malloc(sizeof(WCHAR) * (dwValue + 1));
+				if (searchInfo->pPlaceHolderTextW) {
+					wcscpy_s(searchInfo->pPlaceHolderTextW, dwValue + 1, exAttr);
+				}
+
+				searchInfo->dwFlags |= 1;
+				VFSetPlaceholderTextW(searchInfo->hSearchBox, searchInfo->pPlaceHolderTextW);
+			}
+			else {
+				searchInfo->dwFlags &= ~1;
+				VFUnsetPlaceholderTextW(searchInfo->hSearchBox);
+			}
 		}; break;
 	}
 
@@ -186,6 +211,10 @@ __declspec(dllexport) void VFCleanSearchboxInfo(PVOID searchboxInfo) {
 	searchInfo = searchboxInfo;
 	if (searchInfo->dwSize != sizeof(XCUSTOMSEARCHBAND)) {
 		goto escapeArea;
+	}
+
+	if (searchInfo->pPlaceHolderTextW) {
+		free(searchInfo->pPlaceHolderTextW);
 	}
 
 	//free richedit control dll
@@ -263,6 +292,21 @@ LRESULT CALLBACK SearchbarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		if (tmp & ES_READONLY) {
 			return 0;
 		}
+		if (info->pPlaceHolderTextW) {
+			if (info->dwFlags & 1) {
+				info->dwFlags &= ~1;
+				VFUnsetPlaceholderTextW(info->hSearchBox);
+			}
+		}
+	}
+	else if (msg == WM_KILLFOCUS) {
+		if (info->pPlaceHolderTextW) {
+			GetWindowText(info->hSearchBox, text, MAX_PATH);
+			if (wcslen(text) == 0) {
+				info->dwFlags |= 1; //Enable Placeholder Text
+				VFSetPlaceholderTextW(info->hSearchBox, info->pPlaceHolderTextW);
+			}
+		}
 	}
 	return CallWindowProcW(info->g_OldProc,hwnd, msg, wParam, lParam);
 }
@@ -312,4 +356,21 @@ BOOL XFindCustomSearchBand(HWND hwnd, LPARAM lParam) {
 		return FALSE;
 	}
 	return TRUE;
+}
+
+void VFSetPlaceholderTextW(HWND hwnd, LPCWSTR text) {
+	CHARFORMATW format = { sizeof(CHARFORMATW),0, };
+	SetWindowText(hwnd, text);
+	format.cbSize = sizeof(CHARFORMATW);
+	format.dwMask = CFM_COLOR;
+	format.crTextColor = RGB(180, 180, 180);
+	SendMessageW(hwnd, EM_SETCHARFORMAT, SCF_ALL, &format);
+}
+
+void VFUnsetPlaceholderTextW(HWND hwnd) {
+	CHARFORMATW format = { sizeof(CHARFORMATW),0, };
+	SetWindowText(hwnd, L"");
+	format.dwMask = CFM_COLOR;
+	format.crTextColor = RGB(0, 0, 0);
+	SendMessageW(hwnd, EM_SETCHARFORMAT, SCF_ALL, &format);
 }
