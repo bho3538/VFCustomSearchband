@@ -97,11 +97,11 @@ __declspec(dllexport) BOOL VFShowCustomSearchBand(PVOID searchboxInfo) {
 
 	SendMessage(searchInfo->hSearchBox, EM_GETRECT, 0, (LPARAM)&rect);
 
-	if (rect.bottom - rect.top > 30) {
-		rect.top += 5;
+	if (rect.bottom - rect.top > 28) {
+		rect.top += 4;
 	}
-	rect.left += 5;
-	SendMessage(searchInfo->hSearchBox, EM_SETRECT, 2, (LPARAM)&rect);
+	rect.left += 4;
+	SendMessage(searchInfo->hSearchBox, EM_SETRECT, 1, (LPARAM)&rect);
 
 
 	ShowWindow(searchInfo->hSearchBox, SW_SHOWNORMAL);
@@ -160,6 +160,11 @@ __declspec(dllexport) void VFSetOptionsSearchband(PVOID searchboxInfo, DWORD opt
 			else {
 				searchInfo->dwFlags &= ~1;
 				VFUnsetPlaceholderTextW(searchInfo->hSearchBox);
+
+				if (searchInfo->pPlaceHolderTextW) {
+					free(searchInfo->pPlaceHolderTextW);
+					searchInfo->pPlaceHolderTextW = NULL;
+				}
 			}
 		}; break;
 	}
@@ -364,7 +369,7 @@ void VFSetPlaceholderTextW(HWND hwnd, LPCWSTR text) {
 	format.cbSize = sizeof(CHARFORMATW);
 	format.dwMask = CFM_COLOR;
 	format.crTextColor = RGB(180, 180, 180);
-	SendMessageW(hwnd, EM_SETCHARFORMAT, SCF_ALL, &format);
+	SendMessageW(hwnd, EM_SETCHARFORMAT, SCF_ALL, (LPARAM)&format);
 }
 
 void VFUnsetPlaceholderTextW(HWND hwnd) {
@@ -372,5 +377,5 @@ void VFUnsetPlaceholderTextW(HWND hwnd) {
 	SetWindowText(hwnd, L"");
 	format.dwMask = CFM_COLOR;
 	format.crTextColor = RGB(0, 0, 0);
-	SendMessageW(hwnd, EM_SETCHARFORMAT, SCF_ALL, &format);
+	SendMessageW(hwnd, EM_SETCHARFORMAT, SCF_ALL, (LPARAM)&format);
 }
