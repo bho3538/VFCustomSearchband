@@ -9,6 +9,7 @@ extern "C" {
 #define VF_SEARCH_ENABLE 1
 #define VF_SEARCH_DISABLE 2
 #define VF_SEARCH_PLACEHOLDERTEXT 4
+#define VF_SEARCH_USECUSTOMBORDER 8
 #endif
 	typedef void(__stdcall *CCUSTOMSEARCHCALLBACK)(LPCWSTR, PVOID);
 
@@ -26,14 +27,3 @@ extern "C" {
 }
 #endif
 
-//Internal Function
-
-//FLOAT XGetCurrentWindowDPI(HWND hwnd);
-BOOL XFindSearchband(HWND hwnd, LPARAM lParam);
-
-LRESULT CALLBACK SearchbarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-DWORD CheckParentWindowSize(LPVOID args);
-
-BOOL XCusumSearchbandEnabled(HWND hwnd);
-BOOL XFindCustomSearchBand(HWND hwnd, LPARAM lParam);
