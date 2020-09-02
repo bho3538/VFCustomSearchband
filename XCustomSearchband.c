@@ -40,7 +40,7 @@ BOOL XFindCustomSearchBand(HWND hwnd, LPARAM lParam);
 void VFSetPlaceholderTextW(HWND hwnd, LPCWSTR text);
 void VFUnsetPlaceholderTextW(HWND hwnd);
 
-void SetParentLocation(PRECT pParentRect,PXCUSTOMSEARCHBAND info);
+void SetParentLocation(PRECT pParentRect,PXCUSTOMSEARCHBAND info,BOOL setTop);
 void SetEditboxLocation(DWORD parentHeight,PXCUSTOMSEARCHBAND info);
 
 __declspec(dllexport) PVOID VFInitializeCustomSearchBand(HWND targetHwnd, CCUSTOMSEARCHCALLBACK callback, PVOID userData, BOOL findSearchBand) {
@@ -102,36 +102,31 @@ __declspec(dllexport) BOOL VFShowCustomSearchBand(PVOID searchboxInfo) {
 	wc.lpszClassName = VF_SEARCHBAND_CLSNAME;
 	wc.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
 
-	if (!RegisterClassW(&wc)) {
-		goto escapeArea;
-	}
+	RegisterClassW(&wc);
 
-	searchInfo->hSearchBox = CreateWindowExW(0, VF_SEARCHBAND_CLSNAME, NULL, WS_CHILD | WS_BORDER | WS_VISIBLE, 0, 0, 0, 0, searchInfo->hTargetHwnd, NULL, NULL, NULL);
+	searchInfo->hSearchBox = CreateWindowExW(0, VF_SEARCHBAND_CLSNAME, NULL, WS_CHILD | WS_BORDER | WS_VISIBLE, 0, 0, 0, 0, searchInfo->hTargetHwnd, NULL, NULL, searchInfo);
 	if (!searchInfo->hSearchBox) {
 		goto escapeArea;
 	}
 	SetWindowLongPtr(searchInfo->hSearchBox, GWLP_USERDATA, (LONG_PTR)searchInfo);
-	SetParent(searchInfo->hTargetHwnd, searchInfo->hSearchBox);
 
-	searchInfo->hSearchEditBox = CreateWindowExW(0, L"Edit", NULL, WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 0, 0, 0, 0, searchInfo->hSearchBox, NULL, NULL, NULL);
-	searchInfo->oldEditProc = (WNDPROC)GetWindowLongPtr(searchInfo->hSearchEditBox, GWLP_WNDPROC);
-	
-	SetWindowLongPtr(searchInfo->hSearchEditBox, GWLP_WNDPROC, (LONG_PTR)SearchbarEditProc);
-	SetWindowLongPtr(searchInfo->hSearchEditBox, GWLP_USERDATA, (LONG_PTR)searchInfo);
-	
 	GetClientRect(searchInfo->hTargetHwnd, &rect);
 
-
+	//hide original searchband if custom searchband is enabled
 	if (XCusumSearchbandEnabled(searchInfo->hTargetHwnd)) {
 		tmp = GetWindowLongPtrW(searchInfo->hOriginalBox, GWL_STYLE);
 		tmp &= ~(WS_VISIBLE);
 		SetWindowLongPtr(searchInfo->hOriginalBox, GWL_STYLE, tmp);
 	}
-	SetParentLocation(&rect, searchInfo);
+
+
+	if (searchInfo->pPlaceHolderTextW) {
+		VFSetPlaceholderTextW(searchInfo->hSearchEditBox, searchInfo->pPlaceHolderTextW);
+	}
+	SetParentLocation(&rect, searchInfo,TRUE);
+	SetEditboxLocation(rect.bottom, searchInfo);
 
 	ShowWindow(searchInfo->hSearchBox, SW_SHOWNORMAL);
-
-	ShowWindow(searchInfo->hSearchEditBox, SW_SHOWNORMAL);
 
 	searchInfo->hWatchSizeThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)CheckParentWindowSize, searchInfo, 0, NULL);
 
@@ -160,7 +155,7 @@ __declspec(dllexport) void VFSetOptionsSearchband(PVOID searchboxInfo, DWORD opt
 			searchInfo->dwFlagsSet |= VF_SEARCH_ENABLE;
 			searchInfo->dwFlagsSet &= ~VF_SEARCH_DISABLE;
 			SendMessageW(searchInfo->hSearchEditBox, EM_SETREADONLY, FALSE, 0);
-			SendMessageW(searchInfo->hSearchEditBox, EM_SETBKGNDCOLOR, 0, RGB(255, 255, 255));
+			//SendMessageW(searchInfo->hSearchEditBox, EM_SETBKGNDCOLOR, 0, RGB(255, 255, 255));
 		}; break;
 		case VF_SEARCH_DISABLE: {
 			searchInfo->dwFlagsSet |= VF_SEARCH_DISABLE;
@@ -168,31 +163,33 @@ __declspec(dllexport) void VFSetOptionsSearchband(PVOID searchboxInfo, DWORD opt
 			SendMessageW(searchInfo->hSearchEditBox, EM_SETREADONLY, TRUE, 0);
 			//SendMessageW(searchInfo->hSearchEditBox, EM_SETBKGNDCOLOR, 0, RGB(212, 212, 212));
 		}; break;
-		case VF_SEARCH_PLACEHOLDERTEXT: {
-			if (exAttr) { //LPCWSTR
-				if (searchInfo->pPlaceHolderTextW) {
-					free(searchInfo->pPlaceHolderTextW);
-				}
+		
+		//temporary disabled
+		//case VF_SEARCH_PLACEHOLDERTEXT: {
+		//	if (exAttr) { //LPCWSTR
+		//		if (searchInfo->pPlaceHolderTextW) {
+		//			free(searchInfo->pPlaceHolderTextW);
+		//		}
 
-				dwValue = (DWORD)wcslen(exAttr);
-				searchInfo->pPlaceHolderTextW = (LPWSTR)malloc(sizeof(WCHAR) * (dwValue + 1));
-				if (searchInfo->pPlaceHolderTextW) {
-					wcscpy_s(searchInfo->pPlaceHolderTextW, dwValue + 1, exAttr);
-				}
+		//		dwValue = (DWORD)wcslen(exAttr);
+		//		searchInfo->pPlaceHolderTextW = (LPWSTR)malloc(sizeof(WCHAR) * (dwValue + 1));
+		//		if (searchInfo->pPlaceHolderTextW) {
+		//			wcscpy_s(searchInfo->pPlaceHolderTextW, dwValue + 1, exAttr);
+		//		}
 
-				searchInfo->dwFlags |= 1;
-				VFSetPlaceholderTextW(searchInfo->hSearchEditBox, searchInfo->pPlaceHolderTextW);
-			}
-			else {
-				searchInfo->dwFlags &= ~1;
-				VFUnsetPlaceholderTextW(searchInfo->hSearchEditBox);
+		//		searchInfo->dwFlags |= 1;
+		//		VFSetPlaceholderTextW(searchInfo->hSearchEditBox, searchInfo->pPlaceHolderTextW);
+		//	}
+		//	else {
+		//		searchInfo->dwFlags &= ~1;
+		//		VFUnsetPlaceholderTextW(searchInfo->hSearchEditBox);
 
-				if (searchInfo->pPlaceHolderTextW) {
-					free(searchInfo->pPlaceHolderTextW);
-					searchInfo->pPlaceHolderTextW = NULL;
-				}
-			}
-		}; break;
+		//		if (searchInfo->pPlaceHolderTextW) {
+		//			free(searchInfo->pPlaceHolderTextW);
+		//			searchInfo->pPlaceHolderTextW = NULL;
+		//		}
+		//	}
+		//}; break;
 	}
 
 escapeArea:
@@ -299,47 +296,65 @@ LRESULT CALLBACK SearchbarEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
 		return E_FAIL;
 	}
 
-	if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
-		tmp = GetWindowLongPtrW(info->hSearchEditBox, GWL_STYLE);
-		if (!(tmp & ES_READONLY)) {
-			//Get Current search text
-			GetWindowText(info->hSearchEditBox, text, MAX_PATH);
-			if (info->callback) {
-				info->callback(text, info->userData);
+	switch (msg) {
+		case WM_KEYDOWN: {
+			if (wParam == VK_RETURN) {
+				tmp = GetWindowLongPtrW(info->hSearchEditBox, GWL_STYLE);
+				if (!(tmp & ES_READONLY)) {
+					//Get Current search text
+					GetWindowText(info->hSearchEditBox, text, MAX_PATH);
+					if (info->callback) {
+						info->callback(text, info->userData);
+					}
+					else {
+						MessageBoxW(NULL, text, L"Custom NSE Search", 0);
+					}
+					//Clear current search text
+					SendMessageW(info->hSearchEditBox, WM_SETTEXT, (WPARAM)NULL, (LPARAM)L"");
+				}
+			}
+		}; break;
+		case WM_GETDLGCODE: {
+			//allow enter key in file dialog
+			if (wParam == VK_RETURN) {
+				return (DLGC_WANTALLKEYS | CallWindowProcW(info->oldEditProc, hwnd, msg, wParam, lParam));
+			}
+		}; break;
+		case WM_SETFOCUS: {
+			tmp = GetWindowLongPtrW(info->hSearchEditBox, GWL_STYLE);
+			if (tmp & ES_READONLY) {
+				return 0;
+			}
+			if (info->pPlaceHolderTextW) {
+				if (info->dwFlags & 1) {
+					info->dwFlags &= ~1;
+					VFUnsetPlaceholderTextW(info->hSearchEditBox);
+				}
+			}; break;
+		case WM_KILLFOCUS: {
+			if (info->pPlaceHolderTextW) {
+				GetWindowText(info->hSearchEditBox, text, MAX_PATH);
+				if (wcslen(text) == 0) {
+					info->dwFlags |= 1; //Enable Placeholder Text
+					VFSetPlaceholderTextW(info->hSearchEditBox, info->pPlaceHolderTextW);
+				}
+			}
+			}; break;
+		}
+		case WM_MOUSEMOVE: {
+			//SET disabled cursor if searchband is readonly mode
+			if (info->dwFlagsSet & VF_SEARCH_DISABLE) {
+				SetClassLongPtr(info->hSearchEditBox, -12, (LONG_PTR)LoadCursor(NULL, IDC_NO)); //GCL_HCURSOR
+				return 0;
 			}
 			else {
-				MessageBoxW(NULL, text, L"Custom NSE Search", 0);
+				SetClassLongPtr(info->hSearchEditBox, -12, (LONG_PTR)LoadCursor(NULL, IDC_ARROW)); //GCL_HCURSOR
+				return 0;
 			}
-			//Clear current search text
-			SendMessageW(info->hSearchEditBox, WM_SETTEXT, (WPARAM)NULL, (LPARAM)L"");
-		}
+		}; break;
 	}
-	else if (msg == WM_GETDLGCODE && wParam == VK_RETURN) {
-		//allow enter key in file dialog
-		return (DLGC_WANTALLKEYS | CallWindowProcW(info->oldEditProc, hwnd, msg, wParam, lParam));
-	}
-	else if (msg == WM_SETFOCUS) {
-		tmp = GetWindowLongPtrW(info->hSearchEditBox, GWL_STYLE);
-		if (tmp & ES_READONLY) {
-			return 0;
-		}
-		if (info->pPlaceHolderTextW) {
-			if (info->dwFlags & 1) {
-				info->dwFlags &= ~1;
-				VFUnsetPlaceholderTextW(info->hSearchEditBox);
-			}
-		}
-	}
-	else if (msg == WM_KILLFOCUS) {
-		if (info->pPlaceHolderTextW) {
-			GetWindowText(info->hSearchEditBox, text, MAX_PATH);
-			if (wcslen(text) == 0) {
-				info->dwFlags |= 1; //Enable Placeholder Text
-				VFSetPlaceholderTextW(info->hSearchEditBox, info->pPlaceHolderTextW);
-			}
-		}
-	}
-		
+
+	
 	return CallWindowProcW(info->oldEditProc, hwnd, msg, wParam, lParam);
 }
 
@@ -350,42 +365,63 @@ LRESULT CALLBACK SearchbarProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 	HGDIOBJ old;
 	DWORD width, height = 0;
 	PXCUSTOMSEARCHBAND info = (PXCUSTOMSEARCHBAND)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+	LPCREATESTRUCTW data = NULL;
 
-	if (msg == WM_NCPAINT && info->dwFlagsSet & VF_SEARCH_USECUSTOMBORDER) {
-		GetWindowRect(hWnd, &rect);
-		hdc = GetDCEx(hWnd, (HRGN)wParam, DCX_WINDOW | DCX_CACHE | DCX_INTERSECTRGN | DCX_LOCKWINDOWUPDATE);
-		pen = CreatePen(PS_INSIDEFRAME, 2, RGB(200, 200, 200));
-		old = SelectObject(hdc, pen);
-		width = rect.right - rect.left;
-		height = rect.bottom - rect.top;
-		Rectangle(hdc, 0, 0, width, height);
-		SelectObject(hdc, old);
-		DeleteObject(pen);
-		ReleaseDC(hWnd, hdc);
+	switch (msg) {
+		case WM_CREATE: {
+			data = (LPCREATESTRUCTW)lParam;
+			if (data && data->lpCreateParams) {
+				info = data->lpCreateParams;
+				info->hSearchBox = hWnd;
+				info->hSearchEditBox = CreateWindowExW(0, L"Edit", NULL, WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL , 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
+				info->oldEditProc = (WNDPROC)GetWindowLongPtr(info->hSearchEditBox, GWLP_WNDPROC);
 
-		return 0;
+				SetWindowLongPtr(info->hSearchEditBox, GWLP_WNDPROC, (LONG_PTR)SearchbarEditProc);
+				SetWindowLongPtr(info->hSearchEditBox, GWLP_USERDATA, (LONG_PTR)info);
+
+				GetClientRect(info->hTargetHwnd, &rect);
+
+				SetParentLocation(&rect, info,FALSE);
+				SetEditboxLocation(rect.bottom, info);
+
+				MoveWindow(info->hSearchEditBox, 3, info->wEditYLocation, rect.right, info->wEditBoxHeight, FALSE);
+			}
+		}; break;
+		case WM_NCPAINT: {
+			if (info && info->dwFlagsSet & VF_SEARCH_USECUSTOMBORDER) {
+				GetWindowRect(hWnd, &rect);
+				hdc = GetDCEx(hWnd, (HRGN)wParam, DCX_WINDOW | DCX_CACHE | DCX_INTERSECTRGN | DCX_LOCKWINDOWUPDATE);
+				pen = CreatePen(PS_INSIDEFRAME, 2, RGB(200, 200, 200));
+				old = SelectObject(hdc, pen);
+				width = rect.right - rect.left;
+				height = rect.bottom - rect.top;
+				Rectangle(hdc, 0, 0, width, height);
+				SelectObject(hdc, old);
+				DeleteObject(pen);
+				ReleaseDC(hWnd, hdc);
+
+				return 0;
+			}
+		}; break;
+
+		//case WM_ERASEBKGND: {
+
+		//	//if (info && info->dwFlagsSet & VF_SEARCH_DISABLE) {
+		//	//	SetBkColor((HDC)wParam, RGB(192, 192, 192));
+		//	//}
+		//	//else {
+		//	//	SetBkColor((HDC)wParam, RGB(255, 255, 255));
+		//	//}
+
+		//	////ExtTextOut((HDC)wParam, 0, 0, ETO_OPAQUE, &rect, 0, 0, 0);
+		//	//return 1;
+		//}; break;
+		case WM_CTLCOLORSTATIC: {
+			return (INT_PTR)GetStockObject(WHITE_BRUSH);
+		}; break;
 	}
-	else if (msg == WM_ERASEBKGND) {
-		GetClientRect(hWnd, &rect);
-		if (info->dwFlagsSet & VF_SEARCH_DISABLE) {
-			SetBkColor((HDC)wParam, RGB(230, 230, 230));
-		}
-		else {
-			SetBkColor((HDC)wParam, RGB(255, 255, 255));
-		}
 
-		ExtTextOut((HDC)wParam, 0, 0, ETO_OPAQUE, &rect, 0, 0, 0);
-		return 1;
-	}
-	else if (msg == WM_CTLCOLORSTATIC) {
-		hdc = (HDC)wParam;
-
-		SetBkColor(hdc, RGB(230, 230, 230));
-
-		return (INT_PTR)GetStockObject(WHITE_BRUSH);
-	}
-	   
-	return DefWindowProcW(hWnd,msg,wParam,lParam);
+	return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
 //Check parent original searchband is resized
@@ -420,19 +456,20 @@ DWORD CheckParentWindowSize(LPVOID args) {
 
 		parentWidth = (INT)(rect2.right * info->dpi);
 
-
-		if (parentWidth - rect.right > 2 || rect.right - parentWidth > 2 || rect4.right == 0) {
-			MoveWindow(info->hSearchBox, 0, info->wMainYLocation, parentWidth, (INT)((rect3.bottom - info->wMainYLocation + 2) * info->dpi), TRUE);
-			MoveWindow(info->hSearchEditBox, 3, info->wEditYLocation, parentWidth, info->wEditBoxHeight, TRUE);
-
-			if (info->wEditBoxHeight == 0) {
-				//????
-				GetClientRect(info->hOriginalBox, &rect3);
-				SetEditboxLocation(rect3.bottom, info);
-			}
+		if (parentWidth - rect.right > 2 || rect.right - parentWidth > 2){
+			MoveWindow(info->hSearchBox, 0, info->wMainYLocation, parentWidth, (INT)(rect3.bottom - info->wMainYLocation + 2), TRUE);
+			MoveWindow(info->hSearchEditBox, 3, info->wEditYLocation, parentWidth, info->wEditBoxHeight, FALSE);
+			//debug only (exe)
+			//if (info->wEditBoxHeight == 0) {
+			//	//????
+			//	GetClientRect(info->hOriginalBox, &rect3);
+			//	SetEditboxLocation(rect3.bottom, info);
+			//}
 		}
-		
-		Sleep(1000);
+		else {
+			Sleep(1000);
+		}
+
 	}
 
 }
@@ -472,34 +509,39 @@ void VFUnsetPlaceholderTextW(HWND hwnd) {
 	SendMessageW(hwnd, EM_SETCHARFORMAT, SCF_ALL, (LPARAM)&format);
 }
 
-void SetParentLocation(PRECT pParentRect,PXCUSTOMSEARCHBAND info) {
+void SetParentLocation(PRECT pParentRect,PXCUSTOMSEARCHBAND info, BOOL setTop) {
 	RECT rect = { 0, };
 	if (info->hOriginalBox) {
 		GetClientRect(info->hOriginalBox, &rect);
-		info->wMainYLocation = (WORD)(pParentRect->bottom - rect.bottom)	;
+		info->wMainYLocation = (WORD)(pParentRect->bottom - rect.bottom);
 		pParentRect->bottom = rect.bottom;
 	}
 
-	SetWindowPos(info->hSearchBox, HWND_TOP, 0, info->wMainYLocation, pParentRect->right, pParentRect->bottom, 0);
+	if (setTop) {
+		SetWindowPos(info->hSearchBox, HWND_TOP, 0, info->wMainYLocation, pParentRect->right, pParentRect->bottom, 0);
+
+		//for height (original searchband is little small)
+		if (info->hOriginalBox) {
+			MoveWindow(info->hSearchBox, 0, info->wMainYLocation, rect.right, (INT)(rect.bottom - info->wMainYLocation + 2), TRUE);
+		}
+	}
 }
 
 void SetEditboxLocation(DWORD parentHeight,PXCUSTOMSEARCHBAND info) {
 	if (!info->wEditBoxHeight) {
 		if (parentHeight > 35) {
-			info->wEditBoxHeight = 26;
+			info->wEditBoxHeight = 28;
 		}
 		else {
-			info->wEditBoxHeight = parentHeight - 7;
+			info->wEditBoxHeight = parentHeight - 5;
 		}
-		info->wEditBoxHeight -= (info->wMainYLocation * 2);
+		info->wEditBoxHeight -= ((info->wMainYLocation * 2));
 
-		info->wEditYLocation = (WORD)((parentHeight - info->wEditBoxHeight) / 2);
+		info->wEditYLocation = (WORD)((parentHeight - info->wEditBoxHeight) / 2) - 1;
 
 		if (!info->hEditboxFont) {
 			info->hEditboxFont = CreateFont(info->wEditBoxHeight, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Arial");
 		}
 		SendMessage(info->hSearchEditBox, WM_SETFONT, (WPARAM)info->hEditboxFont, 1);
-
-		SetWindowPos(info->hSearchEditBox, HWND_TOP, 3, info->wEditYLocation, 0, info->wEditBoxHeight, 0);
 	}
 }

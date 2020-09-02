@@ -14,7 +14,7 @@ int main() {
 	PVOID aa = VFInitializeCustomSearchBand(explorer, NULL, NULL, 1);
 	if (aa) {
 		VFShowCustomSearchBand(aa);
-		//VFSetOptionsSearchband(aa, VF_SEARCH_DISABLE, NULL);
+		VFSetOptionsSearchband(aa, VF_SEARCH_DISABLE, NULL);
 		VFSetOptionsSearchband(aa, VF_SEARCH_PLACEHOLDERTEXT, (PVOID)L"Remote Search");
 	}
 	while (GetMessage(&Msg, NULL, 0, 0) > 0) {
