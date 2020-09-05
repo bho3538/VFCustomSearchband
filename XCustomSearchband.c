@@ -3,6 +3,8 @@
 
 #define VF_SEARCHBAND_CLSNAME L"BYUNGHO_SEARCHBOX"
 
+#define VF_SEARCH_USEDARKTHEME 16
+
 typedef struct _XCUSTOMSEARCHBAND {
 	DWORD dwSize;
 	DWORD dwFlags;
@@ -42,6 +44,7 @@ void VFUnsetPlaceholderTextW(HWND hwnd);
 
 void SetParentLocation(PRECT pParentRect,PXCUSTOMSEARCHBAND info,BOOL setTop);
 void SetEditboxLocation(DWORD parentHeight,PXCUSTOMSEARCHBAND info);
+BOOL IsSystemUsingDarkTheme();
 
 __declspec(dllexport) PVOID VFInitializeCustomSearchBand(HWND targetHwnd, CCUSTOMSEARCHCALLBACK callback, PVOID userData, BOOL findSearchBand) {
 	BOOL re = FALSE;
@@ -68,6 +71,11 @@ __declspec(dllexport) PVOID VFInitializeCustomSearchBand(HWND targetHwnd, CCUSTO
 
 	if (!searchInfo->hTargetHwnd) {
 		goto escapeArea;
+	}
+
+	//for windows 10 +
+	if (IsSystemUsingDarkTheme()) {
+		searchInfo->dwFlags |= VF_SEARCH_USEDARKTHEME;
 	}
 
 	re = TRUE;
@@ -100,7 +108,13 @@ __declspec(dllexport) BOOL VFShowCustomSearchBand(PVOID searchboxInfo) {
 
 	wc.lpfnWndProc = SearchbarProc;
 	wc.lpszClassName = VF_SEARCHBAND_CLSNAME;
-	wc.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
+
+	if (searchInfo->dwFlags & VF_SEARCH_USEDARKTHEME) {
+		wc.hbrBackground = (HBRUSH)GetStockObject(DKGRAY_BRUSH);
+	}
+	else {
+		wc.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
+	}
 
 	RegisterClassW(&wc);
 
@@ -129,7 +143,6 @@ __declspec(dllexport) BOOL VFShowCustomSearchBand(PVOID searchboxInfo) {
 	ShowWindow(searchInfo->hSearchBox, SW_SHOWNORMAL);
 
 	searchInfo->hWatchSizeThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)CheckParentWindowSize, searchInfo, 0, NULL);
-
 
 	re = TRUE;
 escapeArea:
@@ -291,6 +304,7 @@ LRESULT CALLBACK SearchbarEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
 	WCHAR text[MAX_PATH];
 	PXCUSTOMSEARCHBAND info = (PXCUSTOMSEARCHBAND)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 	LONG_PTR tmp = 0;
+	HDC hdc = NULL;
 
 	if (!info) {
 		return E_FAIL;
@@ -352,6 +366,7 @@ LRESULT CALLBACK SearchbarEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
 				return 0;
 			}
 		}; break;
+
 	}
 
 	
@@ -403,7 +418,14 @@ LRESULT CALLBACK SearchbarProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 				return 0;
 			}
 		}; break;
-
+		case WM_CTLCOLOREDIT: {
+			if (info->dwFlags & VF_SEARCH_USEDARKTHEME) {
+				hdc = (HDC)wParam;
+				SetBkColor(hdc, RGB(64, 64, 64));
+				SetTextColor(hdc, RGB(255, 255, 255));
+				return (LRESULT)GetStockObject(DKGRAY_BRUSH);
+			}
+		}; break;
 		//case WM_ERASEBKGND: {
 
 		//	//if (info && info->dwFlagsSet & VF_SEARCH_DISABLE) {
@@ -417,7 +439,15 @@ LRESULT CALLBACK SearchbarProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 		//	//return 1;
 		//}; break;
 		case WM_CTLCOLORSTATIC: {
-			return (INT_PTR)GetStockObject(WHITE_BRUSH);
+			if (info->dwFlags & VF_SEARCH_USEDARKTHEME) {
+				hdc = (HDC)wParam;
+				SetBkColor(hdc, RGB(64, 64, 64));
+				SetTextColor(hdc, RGB(255, 255, 255));
+				return (LRESULT)GetStockObject(DKGRAY_BRUSH);
+			}
+			else {
+				return (INT_PTR)GetStockObject(WHITE_BRUSH);
+			}
 		}; break;
 	}
 
@@ -544,4 +574,28 @@ void SetEditboxLocation(DWORD parentHeight,PXCUSTOMSEARCHBAND info) {
 		}
 		SendMessage(info->hSearchEditBox, WM_SETFONT, (WPARAM)info->hEditboxFont, 1);
 	}
+}
+
+BOOL IsSystemUsingDarkTheme() {
+	BOOL re = FALSE;
+	HKEY hKey = INVALID_HANDLE_VALUE;
+	DWORD val = 1;
+	DWORD bufferSize = sizeof(DWORD);
+
+	if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 0, KEY_READ, &hKey) != 0) {
+		goto escapeArea;
+	}
+
+	RegQueryValueEx(hKey, L"AppsUseLightTheme", NULL, NULL, (LPBYTE)&val, &bufferSize);
+
+	if (val == 0) {
+		re = TRUE;
+	}
+
+escapeArea:
+	if (hKey != INVALID_HANDLE_VALUE) {
+		RegCloseKey(hKey);
+	}
+
+	return re;
 }
