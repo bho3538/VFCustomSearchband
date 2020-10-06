@@ -29,7 +29,7 @@ typedef struct _XCUSTOMSEARCHBAND {
 //Internal Function
 
 //FLOAT XGetCurrentWindowDPI(HWND hwnd);
-BOOL XFindSearchband(HWND hwnd, LPARAM lParam);
+BOOL CALLBACK XFindSearchband(HWND hwnd, LPARAM lParam);
 
 LRESULT CALLBACK SearchbarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK SearchbarEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -37,7 +37,7 @@ LRESULT CALLBACK SearchbarEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
 DWORD CheckParentWindowSize(LPVOID args);
 
 BOOL XCusumSearchbandEnabled(HWND hwnd);
-BOOL XFindCustomSearchBand(HWND hwnd, LPARAM lParam);
+BOOL CALLBACK XFindCustomSearchBand(HWND hwnd, LPARAM lParam);
 
 void VFSetPlaceholderTextW(HWND hwnd, LPCWSTR text);
 void VFUnsetPlaceholderTextW(HWND hwnd);
@@ -86,7 +86,7 @@ escapeArea:
 		VFCleanSearchboxInfo(searchInfo);
 		searchInfo = NULL;
 	}
-
+	
 	return searchInfo;
 }
 
@@ -267,7 +267,7 @@ escapeArea:
 	return;
 }
 
-BOOL XFindSearchband(HWND hwnd, LPARAM lParam) {
+BOOL CALLBACK XFindSearchband(HWND hwnd, LPARAM lParam) {
 	WCHAR className[MAX_PATH];
 	PXCUSTOMSEARCHBAND searchInfo = (PXCUSTOMSEARCHBAND)lParam;
 	DWORD tmp = 0;
@@ -511,7 +511,7 @@ BOOL XCusumSearchbandEnabled(HWND hwnd) {
 
 	return re;
 }
-BOOL XFindCustomSearchBand(HWND hwnd, LPARAM lParam) {
+BOOL CALLBACK XFindCustomSearchBand(HWND hwnd, LPARAM lParam) {
 	WCHAR text[MAX_PATH];
 	GetClassNameW(hwnd, text, MAX_PATH);
 
